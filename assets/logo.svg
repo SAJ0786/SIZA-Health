@@ -1,0 +1,23 @@
+<svg width="560" height="260" viewBox="0 0 560 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="goldGrad" x1="140" y1="10" x2="250" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8B06A"/>
+      <stop offset="1" stop-color="#8A6422"/>
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="150" y1="140" x2="420" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38AAA5"/>
+      <stop offset="1" stop-color="#236B86"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(168 8)">
+    <path d="M88 0C48 0 16 32 16 72C16 90 22 105 34 120L50 108C40 96 34 85 34 72C34 42 58 18 88 18C118 18 142 42 142 72C142 81 140 89 136 96L153 105C159 95 162 84 162 72C162 32 130 0 88 0Z" fill="url(#goldGrad)"/>
+    <path d="M166 92L18 156C-24 174 -34 225 2 245C18 253 37 256 57 256H18C-18 256 -28 229 -12 205C0 187 20 171 52 156L190 92H166Z" fill="url(#goldGrad)"/>
+    <path d="M60 151H116V170H60V151Z" fill="url(#goldGrad)"/>
+    <path d="M56 178H120C126 178 130 182 130 188C130 194 126 198 120 198H56C50 198 46 194 46 188C46 182 50 178 56 178Z" fill="url(#goldGrad)"/>
+    <path d="M72 202H104C101 219 92 230 88 230C84 230 75 219 72 202Z" fill="url(#goldGrad)"/>
+    <path d="M84 148C86 127 93 106 108 90C120 78 134 71 147 64C166 54 183 42 200 22L222 33C206 62 184 80 162 92C151 98 141 103 133 112C123 122 116 136 112 153L84 148Z" fill="url(#goldGrad)"/>
+    <path d="M214 17L224 43L250 35L228 68L194 58L214 17Z" fill="url(#goldGrad)"/>
+  </g>
+  <text x="280" y="200" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="92" fill="url(#tealGrad)" letter-spacing="2">SIZA</text>
+  <text x="280" y="238" text-anchor="middle" font-family="Poppins, Arial, sans-serif" font-size="26" fill="#1E2A33" letter-spacing="9">IDEA TO IMPACT</text>
+</svg>
