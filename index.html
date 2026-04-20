@@ -1,23 +1,133 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<meta name="theme-color" content="#dc2626" />
-<title>Health Tracker</title>
-<link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="assets/logo.png" />
-<link rel="apple-touch-icon" href="assets/logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SIZA Health Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div id="app"></div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="firebase-config.js"></script>
-<script src="app.js"></script>
+  <div class="app-shell">
+    <header class="brand-card">
+      <img src="assets/logo.svg" alt="SIZA logo" class="brand-logo" />
+      <p class="brand-subtitle">Smart health records with guided meter capture</p>
+    </header>
+
+    <section class="summary-grid">
+      <article class="summary-card">
+        <span class="summary-label">Latest BP</span>
+        <strong id="latestBp">No record yet</strong>
+      </article>
+      <article class="summary-card">
+        <span class="summary-label">Latest Sugar</span>
+        <strong id="latestSugar">No record yet</strong>
+      </article>
+      <article class="summary-card summary-card-wide">
+        <span class="summary-label">Next Reminder</span>
+        <strong>No reminder set yet</strong>
+      </article>
+    </section>
+
+    <nav class="tab-bar" aria-label="Main tabs">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="profile">Profile</button>
+      <button class="tab" data-tab="records">Records</button>
+    </nav>
+
+    <main>
+      <section class="tab-panel active" id="dashboard">
+        <section class="card">
+          <div class="card-header">
+            <h2>Advanced OCR Scan</h2>
+            <div class="mode-toggle" role="tablist" aria-label="Scan mode">
+              <button class="mode-btn active" data-mode="sugar">Sugar Mode</button>
+              <button class="mode-btn" data-mode="bp">BP Mode</button>
+            </div>
+          </div>
+
+          <div class="guide-box">
+            <p id="guideText">Place the meter screen inside the box. Avoid glare and keep the digits straight.</p>
+            <div class="preview-grid">
+              <div>
+                <h3>Original image</h3>
+                <div class="image-frame"><img id="originalPreview" alt="Original preview" /></div>
+              </div>
+              <div>
+                <h3>Detected crop</h3>
+                <div class="image-frame processed"><canvas id="processedCanvas"></canvas></div>
+              </div>
+            </div>
+          </div>
+
+          <label class="upload-field">
+            <span>Upload / capture image</span>
+            <input type="file" id="imageInput" accept="image/*" capture="environment" />
+          </label>
+
+          <div class="scan-actions">
+            <button id="detectBtn" class="btn btn-secondary">Detect value</button>
+            <button id="saveBtn" class="btn btn-primary" disabled>Save result</button>
+          </div>
+
+          <div class="feedback" id="scanFeedback">No image loaded.</div>
+
+          <section class="result-panel">
+            <div class="result-row">
+              <span id="resultLabel">Blood Sugar</span>
+              <strong id="resultValue">—</strong>
+            </div>
+            <div class="result-row">
+              <span>Confidence</span>
+              <strong id="resultConfidence">—</strong>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="tab-panel" id="profile">
+        <section class="card">
+          <h2>Profile Information</h2>
+          <form id="profileForm" class="profile-form">
+            <label>
+              <span>Name</span>
+              <input type="text" id="name" />
+            </label>
+            <label>
+              <span>Date of Birth</span>
+              <input type="date" id="dob" />
+            </label>
+            <label>
+              <span>Weight</span>
+              <input type="text" id="weight" placeholder="e.g. 68 kg" />
+            </label>
+            <label>
+              <span>Height</span>
+              <input type="text" id="height" placeholder="e.g. 165 cm" />
+            </label>
+            <label>
+              <span>Medications</span>
+              <textarea id="medications" rows="3" placeholder="Optional"></textarea>
+            </label>
+            <button type="submit" class="btn btn-primary full-width">Save profile</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="tab-panel" id="records">
+        <section class="card">
+          <div class="records-header">
+            <h2>Saved Records</h2>
+            <button id="clearRecordsBtn" class="btn btn-secondary btn-small">Clear records</button>
+          </div>
+          <div id="recordsList" class="records-list empty-state">No records saved yet.</div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>

@@ -1,40 +1,547 @@
-const config=window.HEALTH_TRACKER_FIREBASE||null;let firebaseMode=false,auth=null,db=null,refs=null;
-const state={logged:false,user:null,tab:"dashboard",auth:{email:"",password:""},profile:{name:"",dob:"",weight:"",height:"",medications:[{name:"",frequency:"Once daily"}],bpFrequency:"Daily",sugarFrequency:"Daily",reminderPermission:"default"},records:[],historyFilter:"All",ocrMode:"BP",ocrRaw:"",ocrDetected:null,ocrPreview:"",bpSys:"",bpDia:"",sugar:"",charts:[]};
-const demo=[{id:"1",type:"BP",value:"130/85 mmHg",date:"2026-04-12",time:"08:00",userId:"demo"},{id:"2",type:"Sugar",value:"145 mg/dL",date:"2026-04-12",time:"08:05",userId:"demo"}];
-const reminders=[{label:"Take medication",time:"8:00 AM"},{label:"Check blood pressure",time:"9:00 AM"},{label:"Check blood sugar",time:"9:15 AM"}];
-const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-function k(n){return `health_tracker_${state.user?.uid||"demo"}_${n}`}
-function saveLocal(){localStorage.setItem(k("profile"),JSON.stringify(state.profile));localStorage.setItem(k("records"),JSON.stringify(state.records))}
-function loadLocal(){try{state.profile=JSON.parse(localStorage.getItem(k("profile")))||state.profile}catch{};try{state.records=JSON.parse(localStorage.getItem(k("records")))||demo.slice()}catch{state.records=demo.slice()}}
-async function initFirebase(){if(!config)return false;try{const m1=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');const m2=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');const m3=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');const app=m1.initializeApp(config);auth=m2.getAuth(app);db=m3.getFirestore(app);refs={...m2,...m3};firebaseMode=true;return true}catch(e){console.error(e);return false}}
-function parseBP(t){const c=t.replace(/\s+/g," ").trim();const s=c.match(/(\d{2,3})\s*[\/\\]\s*(\d{2,3})/);if(s)return{primary:s[1],secondary:s[2],confidence:"Parsed"};const p=c.match(/\bSYS\D*(\d{2,3}).*?DIA\D*(\d{2,3})\b/i)||c.match(/\b(\d{2,3})\b.*?\b(\d{2,3})\b/);return p?{primary:p[1],secondary:p[2],confidence:"Parsed"}:null}
-function parseSugar(t){const c=t.replace(/\s+/g," ").trim();const m=c.match(/\b(\d{2,3}(?:\.\d)?)\b/);return m?{primary:m[1],confidence:"Parsed"}:null}
-async function ocrFile(file){$(".preview").innerHTML="<div><strong>Scanning...</strong><p class='small'>Running OCR detection</p></div>";const r=await Tesseract.recognize(file,"eng");state.ocrRaw=r.data.text||"";state.ocrPreview=file.name;state.ocrDetected=state.ocrMode==="BP"?parseBP(state.ocrRaw):parseSugar(state.ocrRaw);render()}
-function destroyCharts(){state.charts.forEach(c=>c.destroy());state.charts=[]}
-function renderCharts(){destroyCharts();const bp=$('#bpChart');const sg=$('#sugarChart');if(bp){const d=state.records.filter(r=>r.type==="BP").slice(0,10).reverse().map(r=>{const [s,d]=r.value.split(" ")[0].split("/").map(Number);return {label:r.date.slice(5),s,d}});state.charts.push(new Chart(bp,{type:"line",data:{labels:d.map(x=>x.label),datasets:[{label:"Systolic",data:d.map(x=>x.s),borderColor:"#dc2626"},{label:"Diastolic",data:d.map(x=>x.d),borderColor:"#fb7185"}]},options:{responsive:true,maintainAspectRatio:false}}))}if(sg){const d=state.records.filter(r=>r.type==="Sugar").slice(0,10).reverse().map(r=>({label:r.date.slice(5),v:Number(r.value.split(" ")[0])}));state.charts.push(new Chart(sg,{type:"line",data:{labels:d.map(x=>x.label),datasets:[{label:"Blood Sugar",data:d.map(x=>x.v),borderColor:"#dc2626"}]},options:{responsive:true,maintainAspectRatio:false}}))}}
-function nextReminder(){const med=state.profile.medications.find(m=>m.name.trim());return med?`${med.name} · ${med.frequency}`:"No reminders scheduled yet"}
-async function requestNotifications(){if(!("Notification" in window))return;state.profile.reminderPermission=await Notification.requestPermission();saveLocal();render()}
-function testReminder(){if("Notification" in window&&Notification.permission==="granted")setTimeout(()=>new Notification("Health Tracker Reminder",{body:"This is a test reminder",icon:"assets/logo.png"}),1500)}
-async function registerUser(){const e=state.auth.email.trim(),p=state.auth.password.trim();if(!e||!p)return alert("Enter email and password.");if(firebaseMode){const u=await refs.createUserWithEmailAndPassword(auth,e,p);state.user=u.user;state.logged=true;await refs.setDoc(refs.doc(db,"profiles",state.user.uid),state.profile);state.records=[]}else{localStorage.setItem("health_tracker_local_auth",JSON.stringify({email:e,password:p}));state.user={uid:"demo",email:e};state.logged=true;loadLocal()}render()}
-async function loginUser(){const e=state.auth.email.trim(),p=state.auth.password.trim();if(!e||!p)return alert("Enter email and password.");if(firebaseMode){const u=await refs.signInWithEmailAndPassword(auth,e,p);state.user=u.user;state.logged=true;const snap=await refs.getDoc(refs.doc(db,"profiles",state.user.uid));if(snap.exists())state.profile=snap.data();const q=refs.query(refs.collection(db,"records"),refs.where("userId","==",state.user.uid));const rs=await refs.getDocs(q);state.records=rs.docs.map(d=>({id:d.id,...d.data()}));if(!state.records.length)state.records=[]}else{const saved=JSON.parse(localStorage.getItem("health_tracker_local_auth")||"null");if(!saved||saved.email!==e||saved.password!==p)return alert("No local account found. Register first.");state.user={uid:"demo",email:e};state.logged=true;loadLocal()}render()}
-async function logout(){if(firebaseMode&&state.user)await refs.signOut(auth);state.logged=false;state.user=null;state.tab="dashboard";render()}
-async function saveProfile(){saveLocal();if(firebaseMode&&state.user)await refs.setDoc(refs.doc(db,"profiles",state.user.uid),state.profile);render()}
-async function saveRecord(type,val){const now=new Date();const rec={id:String(Date.now()),type,value:val,date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),userId:state.user?.uid||"demo"};state.records.unshift(rec);saveLocal();if(firebaseMode&&state.user)await refs.addDoc(refs.collection(db,"records"),rec);render()}
-function authView(){return `<div class="login"><div class="login-card"><div class="brand center"><img src="assets/logo.png" class="logo-large"/><p class="subtitle">Health Tracker</p><p class="small">${firebaseMode?"Firebase mode enabled":"Local device mode enabled"}</p></div><div class="stack"><label><span class="small">Email</span><input id="authEmail" value="${state.auth.email}"></label><label><span class="small">Password</span><input id="authPassword" type="password" value="${state.auth.password}"></label><div class="row"><button id="loginBtn" class="btn primary" style="flex:1">Login</button><button id="registerBtn" class="btn outline" style="flex:1">Register</button></div></div></div></div>`}
-function topCards(){const bp=state.records.find(r=>r.type==="BP"), sg=state.records.find(r=>r.type==="Sugar");return `<div class="grid2"><section class="card"><div class="body"><div class="brand"><div class="logo"><img src="assets/logo.png"/></div><p class="subtitle">Health Tracker</p></div></div></section><section class="card"><div class="body"><div class="stack"><div><p class="label">Latest Blood Pressure</p><p class="value">${bp?bp.value:"-"}</p></div><div><p class="label">Latest Blood Sugar</p><p class="value">${sg?sg.value:"-"}</p></div><div class="soft"><p class="label">Next Reminder</p><p class="value">${nextReminder()}</p></div></div></div></section></div>`}
-function tabs(){return `<div class="tabs">${["dashboard","profile","record","history","trends","medications"].map(t=>`<button class="tab ${state.tab===t?"active":""}" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join("")}</div>`}
-function dashboard(){return `<div class="grid2"><div class="stack"><section class="card"><div class="body"><div class="row between"><div><p class="label">Overview</p><h2 style="margin:4px 0">Hello, ${state.profile.name||"User"}</h2><p class="small">Your health snapshot for today.</p></div><div class="soft"><p class="label">Mode</p><p class="value" style="font-size:1rem">${firebaseMode?"Cloud sync":"Local storage"}</p></div></div><div class="grid2" style="margin-top:16px"><div class="grad1"><div class="row between"><div><p>Blood Pressure</p><h3>${state.records.find(r=>r.type==="BP")?.value.split(" ")[0]||"-"}</h3><small>Latest reading</small></div><div>❤</div></div></div><div class="grad2"><div class="row between"><div><p>Blood Sugar</p><h3>${state.records.find(r=>r.type==="Sugar")?.value.split(" ")[0]||"-"}</h3><small>Latest reading</small></div><div>✚</div></div></div></div></div></section></div><div class="stack"><section class="card"><div class="header">Upcoming Reminders</div><div class="body stack">${reminders.map(r=>`<div class="list"><div><strong>${r.time}</strong><p class="small">${r.label}</p></div><span class="badge">Active</span></div>`).join("")}</div></section><section class="card"><div class="header">Quick Actions</div><div class="body row"><button id="goRecord" class="btn primary">Add Record</button><button id="goProfile" class="btn outline">Edit Profile</button><button id="notifyBtn" class="btn outline">${state.profile.reminderPermission==="granted"?"Notifications enabled":"Enable Notifications"}</button></div></section></div></div>`}
-function profile(){return `<section class="card"><div class="header">User Registration</div><div class="body"><div class="grid4"><label><span class="small">Name</span><input id="pName" value="${state.profile.name}"></label><label><span class="small">Date of Birth</span><input id="pDob" type="date" value="${state.profile.dob}"></label><label><span class="small">Weight</span><input id="pWeight" value="${state.profile.weight}"></label><label><span class="small">Height</span><input id="pHeight" value="${state.profile.height}"></label></div><div class="grid2" style="margin-top:16px"><label><span class="small">Blood Pressure Frequency</span><select id="pBpf"><option ${state.profile.bpFrequency==="Daily"?"selected":""}>Daily</option><option ${state.profile.bpFrequency==="Twice Daily"?"selected":""}>Twice Daily</option><option ${state.profile.bpFrequency==="Weekly"?"selected":""}>Weekly</option></select></label><label><span class="small">Blood Sugar Frequency</span><select id="pSgf"><option ${state.profile.sugarFrequency==="Daily"?"selected":""}>Daily</option><option ${state.profile.sugarFrequency==="Twice Daily"?"selected":""}>Twice Daily</option><option ${state.profile.sugarFrequency==="Weekly"?"selected":""}>Weekly</option></select></label></div><div class="row between" style="margin-top:20px"><strong>Current Medications</strong><button id="addMed" class="btn outline">Add Medication</button></div><div class="stack" style="margin-top:16px">${state.profile.medications.map((m,i)=>`<div class="grid2"><input data-med-name="${i}" placeholder="Medication name" value="${m.name}"><select data-med-freq="${i}"><option ${m.frequency==="Once daily"?"selected":""}>Once daily</option><option ${m.frequency==="Twice daily"?"selected":""}>Twice daily</option><option ${m.frequency==="Three times daily"?"selected":""}>Three times daily</option><option ${m.frequency==="Weekly"?"selected":""}>Weekly</option></select></div>`).join("")}</div><div class="row" style="margin-top:20px"><button id="saveProfile" class="btn primary">Save Profile</button><button id="testReminder" class="btn outline">Test Reminder</button></div></div></section>`}
-function record(){return `<div class="grid2"><section class="card"><div class="header">Add Record</div><div class="body"><div class="row"><button id="modeBP" class="btn ${state.ocrMode==="BP"?"primary":"outline"}">Blood Pressure</button><button id="modeSugar" class="btn ${state.ocrMode==="Sugar"?"primary":"outline"}">Blood Sugar</button></div>${state.ocrMode==="BP"?`<div class="grid2" style="margin-top:16px"><label><span class="small">Systolic</span><input id="bpSys" value="${state.bpSys}"></label><label><span class="small">Diastolic</span><input id="bpDia" value="${state.bpDia}"></label></div><div class="row" style="margin-top:16px"><button id="saveBP" class="btn primary">Save BP</button></div>`:`<label style="margin-top:16px"><span class="small">Blood Sugar</span><input id="sgVal" value="${state.sugar}"></label><div class="row" style="margin-top:16px"><button id="saveSugar" class="btn primary">Save Sugar</button></div>`}</div></section><section class="card"><div class="header">Camera Scan / OCR Flow</div><div class="body"><div class="row"><button id="ocrBP" class="btn ${state.ocrMode==="BP"?"primary":"outline"}">Scan BP Machine</button><button id="ocrSugar" class="btn ${state.ocrMode==="Sugar"?"primary":"outline"}">Scan Glucometer</button></div><div class="preview" style="margin-top:16px">${state.ocrPreview?`<div><strong>Selected image</strong><p class="small">${state.ocrPreview}</p></div>`:`<div><strong>Select a device image</strong><p class="small">Use camera or upload a photo</p></div>`}</div><label style="margin-top:16px"><span class="small">Upload device image</span><input id="ocrFile" type="file" accept="image/*" capture="environment"></label><label style="margin-top:16px"><span class="small">OCR Raw Text</span><textarea id="ocrRaw">${state.ocrRaw}</textarea></label><div class="row" style="margin-top:16px"><button id="parseOCR" class="btn outline">Parse OCR Text</button><button id="applyOCR" class="btn primary">Apply Detected Values</button></div><div class="result-box" style="margin-top:16px"><strong>Detected Result</strong>${state.ocrDetected?(state.ocrMode==="BP"?`<div class="stack" style="margin-top:12px"><div class="list"><span class="small">Systolic</span><strong>${state.ocrDetected.primary}</strong></div><div class="list"><span class="small">Diastolic</span><strong>${state.ocrDetected.secondary||""}</strong></div><div class="list"><span class="small">Confidence</span><strong class="green">${state.ocrDetected.confidence||""}</strong></div></div>`:`<div class="stack" style="margin-top:12px"><div class="list"><span class="small">Blood Sugar</span><strong>${state.ocrDetected.primary} mg/dL</strong></div><div class="list"><span class="small">Confidence</span><strong class="green">${state.ocrDetected.confidence||""}</strong></div></div>`):`<p class="small" style="margin-top:12px">No OCR result yet.</p>`}</div></div></section></div>`}
-function history(){return `<section class="card"><div class="header">History</div><div class="body"><div class="row"><button id="fAll" class="btn ${state.historyFilter==="All"?"primary":"outline"}">All</button><button id="fBP" class="btn ${state.historyFilter==="BP"?"primary":"outline"}">BP</button><button id="fSugar" class="btn ${state.historyFilter==="Sugar"?"primary":"outline"}">Sugar</button></div><div class="tablewrap"><table><thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Value</th></tr></thead><tbody>${(state.historyFilter==="All"?state.records:state.records.filter(r=>r.type===state.historyFilter)).map(r=>`<tr><td>${r.date}</td><td>${r.time}</td><td>${r.type}</td><td>${r.value}</td></tr>`).join("")}</tbody></table></div></div></section>`}
-function trends(){return `<div class="grid2"><section class="card"><div class="header">Blood Pressure Trends</div><div class="body"><div class="chart-box" style="height:320px"><canvas id="bpChart"></canvas></div></div></section><section class="card"><div class="header">Blood Sugar Trends</div><div class="body"><div class="chart-box" style="height:320px"><canvas id="sugarChart"></canvas></div></div></section></div>`}
-function medications(){return `<div class="grid2"><section class="card"><div class="header">Medications</div><div class="body stack">${state.profile.medications.map(m=>`<div class="list"><div><strong>${m.name||"Medication name"}</strong><p class="small">${m.frequency}</p></div><span class="badge">Reminder On</span></div>`).join("")}</div></section><section class="card"><div class="header">Storage & Auth</div><div class="body stack"><div class="soft"><p class="label">Mode</p><p class="value">${firebaseMode?"Firebase cloud sync":"Local device storage"}</p></div><div class="soft"><p class="label">Current user</p><p class="value">${state.user?.email||"demo@local"}</p></div><div class="soft"><p class="label">Notifications</p><p class="value">${state.profile.reminderPermission||"default"}</p></div><button id="logoutBtn" class="btn outline">Logout</button></div></section></div>`}
-function appView(){const content={dashboard:dashboard(),profile:profile(),record:record(),history:history(),trends:trends(),medications:medications()}[state.tab];return `<div class="app">${topCards()}${tabs()}${content}</div>`}
-function bind(){if(!state.logged){$("#authEmail")?.addEventListener("input",e=>state.auth.email=e.target.value);$("#authPassword")?.addEventListener("input",e=>state.auth.password=e.target.value);$("#loginBtn")?.addEventListener("click",loginUser);$("#registerBtn")?.addEventListener("click",registerUser);return}$$("[data-tab]").forEach(b=>b.addEventListener("click",()=>{state.tab=b.dataset.tab;render()}));$("#goRecord")?.addEventListener("click",()=>{state.tab="record";render()});$("#goProfile")?.addEventListener("click",()=>{state.tab="profile";render()});$("#notifyBtn")?.addEventListener("click",requestNotifications);$("#logoutBtn")?.addEventListener("click",logout);
-if(state.tab==="profile"){$("#pName")?.addEventListener("input",e=>state.profile.name=e.target.value);$("#pDob")?.addEventListener("input",e=>state.profile.dob=e.target.value);$("#pWeight")?.addEventListener("input",e=>state.profile.weight=e.target.value);$("#pHeight")?.addEventListener("input",e=>state.profile.height=e.target.value);$("#pBpf")?.addEventListener("change",e=>state.profile.bpFrequency=e.target.value);$("#pSgf")?.addEventListener("change",e=>state.profile.sugarFrequency=e.target.value);$("#addMed")?.addEventListener("click",()=>{state.profile.medications.push({name:"",frequency:"Once daily"});render()});$("#saveProfile")?.addEventListener("click",saveProfile);$("#testReminder")?.addEventListener("click",testReminder);$$("[data-med-name]").forEach(el=>el.addEventListener("input",e=>state.profile.medications[Number(el.dataset.medName)].name=e.target.value));$$("[data-med-freq]").forEach(el=>el.addEventListener("change",e=>state.profile.medications[Number(el.dataset.medFreq)].frequency=e.target.value))}
-if(state.tab==="record"){$("#modeBP")?.addEventListener("click",()=>{state.ocrMode="BP";render()});$("#modeSugar")?.addEventListener("click",()=>{state.ocrMode="Sugar";render()});$("#bpSys")?.addEventListener("input",e=>state.bpSys=e.target.value);$("#bpDia")?.addEventListener("input",e=>state.bpDia=e.target.value);$("#sgVal")?.addEventListener("input",e=>state.sugar=e.target.value);$("#saveBP")?.addEventListener("click",async()=>{if(!state.bpSys||!state.bpDia)return;await saveRecord("BP",`${state.bpSys}/${state.bpDia} mmHg`);state.bpSys="";state.bpDia="";render()});$("#saveSugar")?.addEventListener("click",async()=>{if(!state.sugar)return;await saveRecord("Sugar",`${state.sugar} mg/dL`);state.sugar="";render()});$("#ocrBP")?.addEventListener("click",()=>{state.ocrMode="BP";render()});$("#ocrSugar")?.addEventListener("click",()=>{state.ocrMode="Sugar";render()});$("#ocrRaw")?.addEventListener("input",e=>state.ocrRaw=e.target.value);$("#parseOCR")?.addEventListener("click",()=>{state.ocrDetected=state.ocrMode==="BP"?parseBP(state.ocrRaw):parseSugar(state.ocrRaw);render()});$("#applyOCR")?.addEventListener("click",()=>{if(!state.ocrDetected)return;if(state.ocrMode==="BP"){state.bpSys=state.ocrDetected.primary;state.bpDia=state.ocrDetected.secondary||""}else state.sugar=state.ocrDetected.primary;render()});$("#ocrFile")?.addEventListener("change",async e=>{const f=e.target.files?.[0];if(f)await ocrFile(f)})}
-if(state.tab==="history"){$("#fAll")?.addEventListener("click",()=>{state.historyFilter="All";render()});$("#fBP")?.addEventListener("click",()=>{state.historyFilter="BP";render()});$("#fSugar")?.addEventListener("click",()=>{state.historyFilter="Sugar";render()})}
-if(state.tab==="trends")renderCharts()}
-function render(){document.getElementById("app").innerHTML=state.logged?appView():authView();bind()}
-async function boot(){if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});await initFirebase();if(firebaseMode){refs.onAuthStateChanged(auth,async u=>{if(u){state.user=u;state.logged=true;const snap=await refs.getDoc(refs.doc(db,"profiles",u.uid));if(snap.exists())state.profile=snap.data();const q=refs.query(refs.collection(db,"records"),refs.where("userId","==",u.uid));const rs=await refs.getDocs(q);state.records=rs.docs.map(d=>({id:d.id,...d.data()}));}else{state.logged=false;state.user=null}render()})}else{const u=JSON.parse(localStorage.getItem("health_tracker_local_user")||"null");if(u){state.user=u;state.logged=true;loadLocal()}else state.records=demo.slice();render()}}
-boot();
+const STORAGE_KEYS = {
+  profile: 'siza_profile_v1',
+  records: 'siza_records_v1'
+};
+
+const state = {
+  mode: 'sugar',
+  image: null,
+  currentResult: null,
+  profile: loadJson(STORAGE_KEYS.profile, {
+    name: '', dob: '', weight: '', height: '', medications: ''
+  }),
+  records: loadJson(STORAGE_KEYS.records, [])
+};
+
+const tabs = document.querySelectorAll('.tab');
+const panels = document.querySelectorAll('.tab-panel');
+const modeButtons = document.querySelectorAll('.mode-btn');
+const originalPreview = document.getElementById('originalPreview');
+const processedCanvas = document.getElementById('processedCanvas');
+const imageInput = document.getElementById('imageInput');
+const detectBtn = document.getElementById('detectBtn');
+const saveBtn = document.getElementById('saveBtn');
+const scanFeedback = document.getElementById('scanFeedback');
+const resultLabel = document.getElementById('resultLabel');
+const resultValue = document.getElementById('resultValue');
+const resultConfidence = document.getElementById('resultConfidence');
+const recordsList = document.getElementById('recordsList');
+const profileForm = document.getElementById('profileForm');
+const guideText = document.getElementById('guideText');
+
+bootstrap();
+
+function bootstrap() {
+  bindTabs();
+  bindModes();
+  bindImageInput();
+  bindProfile();
+  bindRecords();
+  renderProfile();
+  renderRecords();
+  renderSummary();
+  updateModeUi();
+  resetCanvas();
+}
+
+function bindTabs() {
+  tabs.forEach(btn => btn.addEventListener('click', () => {
+    tabs.forEach(t => t.classList.remove('active'));
+    panels.forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  }));
+}
+
+function bindModes() {
+  modeButtons.forEach(btn => btn.addEventListener('click', () => {
+    state.mode = btn.dataset.mode;
+    modeButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.currentResult = null;
+    updateModeUi();
+    renderCurrentResult();
+  }));
+}
+
+function updateModeUi() {
+  const sugar = state.mode === 'sugar';
+  resultLabel.textContent = sugar ? 'Blood Sugar' : 'Blood Pressure';
+  guideText.textContent = sugar
+    ? 'Place the glucose meter screen inside the box. Avoid glare and keep the digits straight.'
+    : 'Place the BP monitor display inside the box. Keep both SYS and DIA visible.';
+  scanFeedback.textContent = state.image
+    ? 'Image loaded. Ready to detect.'
+    : 'No image loaded.';
+}
+
+function bindImageInput() {
+  imageInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    const img = await loadImage(dataUrl);
+    state.image = img;
+    state.currentResult = null;
+    originalPreview.src = dataUrl;
+    drawImageToCanvas(processedCanvas, img);
+    scanFeedback.textContent = 'Image loaded. Tap Detect value.';
+    renderCurrentResult();
+    saveBtn.disabled = true;
+  });
+
+  detectBtn.addEventListener('click', async () => {
+    if (!state.image) {
+      scanFeedback.textContent = 'Please upload an image first.';
+      return;
+    }
+    scanFeedback.textContent = 'Processing image...';
+    const result = state.mode === 'sugar'
+      ? detectSugarValue(state.image)
+      : detectBpValue(state.image);
+    state.currentResult = result;
+    scanFeedback.textContent = result.message;
+    renderCurrentResult();
+    saveBtn.disabled = !result.valid;
+  });
+
+  saveBtn.addEventListener('click', () => {
+    if (!state.currentResult?.valid) return;
+    const record = {
+      id: crypto.randomUUID(),
+      mode: state.mode,
+      value: state.currentResult.value,
+      confidence: state.currentResult.confidence,
+      createdAt: new Date().toISOString()
+    };
+    state.records.unshift(record);
+    localStorage.setItem(STORAGE_KEYS.records, JSON.stringify(state.records));
+    renderRecords();
+    renderSummary();
+    scanFeedback.textContent = 'Result saved successfully.';
+    saveBtn.disabled = true;
+  });
+}
+
+function bindProfile() {
+  profileForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    state.profile = {
+      name: document.getElementById('name').value,
+      dob: document.getElementById('dob').value,
+      weight: document.getElementById('weight').value,
+      height: document.getElementById('height').value,
+      medications: document.getElementById('medications').value
+    };
+    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
+    alert('Profile saved.');
+  });
+}
+
+function bindRecords() {
+  document.getElementById('clearRecordsBtn').addEventListener('click', () => {
+    if (!confirm('Clear all saved records?')) return;
+    state.records = [];
+    localStorage.setItem(STORAGE_KEYS.records, JSON.stringify(state.records));
+    renderRecords();
+    renderSummary();
+  });
+}
+
+function renderProfile() {
+  document.getElementById('name').value = state.profile.name || '';
+  document.getElementById('dob').value = state.profile.dob || '';
+  document.getElementById('weight').value = state.profile.weight || '';
+  document.getElementById('height').value = state.profile.height || '';
+  document.getElementById('medications').value = state.profile.medications || '';
+}
+
+function renderCurrentResult() {
+  if (!state.currentResult) {
+    resultValue.textContent = '—';
+    resultConfidence.textContent = '—';
+    return;
+  }
+  resultValue.textContent = state.currentResult.value;
+  resultConfidence.textContent = state.currentResult.confidence;
+}
+
+function renderSummary() {
+  const sugar = state.records.find(r => r.mode === 'sugar');
+  const bp = state.records.find(r => r.mode === 'bp');
+  document.getElementById('latestSugar').textContent = sugar ? sugar.value : 'No record yet';
+  document.getElementById('latestBp').textContent = bp ? bp.value : 'No record yet';
+}
+
+function renderRecords() {
+  if (!state.records.length) {
+    recordsList.className = 'records-list empty-state';
+    recordsList.textContent = 'No records saved yet.';
+    return;
+  }
+  recordsList.className = 'records-list';
+  recordsList.innerHTML = state.records.map(record => `
+    <article class="record-item">
+      <div class="record-top">
+        <div>
+          <div class="record-type">${record.mode === 'sugar' ? 'Blood Sugar' : 'Blood Pressure'}</div>
+          <div class="record-meta">${formatDate(record.createdAt)}</div>
+        </div>
+        <strong>${record.value}</strong>
+      </div>
+      <div class="record-meta">Confidence: ${record.confidence}</div>
+    </article>
+  `).join('');
+}
+
+function detectSugarValue(img) {
+  const roi = extractDisplayRoi(img, 'sugar');
+  drawCanvasImage(processedCanvas, roi.canvas);
+
+  const groups = findDigitGroups(roi.binary, roi.width, roi.height);
+  const digits = groups.slice(0, 3).map(group => decodeSevenSegment(group, roi.height)).join('');
+
+  if (/^\d{2,3}$/.test(digits)) {
+    const value = Number(digits);
+    if (value >= 20 && value <= 600) {
+      return {
+        valid: true,
+        value: `${value} mg/dL`,
+        confidence: roi.score > 0.55 ? 'High' : 'Medium',
+        message: `Glucose value detected: ${value} mg/dL`
+      };
+    }
+  }
+
+  return {
+    valid: false,
+    value: 'Unable to read',
+    confidence: 'Low',
+    message: 'Could not confidently read the glucose value. Try a straighter, closer photo with less glare.'
+  };
+}
+
+function detectBpValue(img) {
+  const roi = extractDisplayRoi(img, 'bp');
+  drawCanvasImage(processedCanvas, roi.canvas);
+  const groups = findDigitGroups(roi.binary, roi.width, roi.height);
+  const digits = groups.map(group => decodeSevenSegment(group, roi.height)).join('');
+
+  if (/^\d{5,6}$/.test(digits)) {
+    const sys = Number(digits.slice(0, 3));
+    const dia = Number(digits.slice(3, 5));
+    if (sys >= 70 && sys <= 250 && dia >= 40 && dia <= 150) {
+      return {
+        valid: true,
+        value: `${sys}/${dia} mmHg`,
+        confidence: roi.score > 0.55 ? 'Medium' : 'Low',
+        message: `Blood pressure detected: ${sys}/${dia} mmHg`
+      };
+    }
+  }
+
+  return {
+    valid: false,
+    value: 'Unable to read',
+    confidence: 'Low',
+    message: 'Could not confidently read the blood pressure value. Keep the display fully visible and retake the photo.'
+  };
+}
+
+function extractDisplayRoi(img, mode) {
+  const srcCanvas = document.createElement('canvas');
+  const ctx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  srcCanvas.width = img.naturalWidth || img.width;
+  srcCanvas.height = img.naturalHeight || img.height;
+  ctx.drawImage(img, 0, 0);
+
+  const { width, height } = srcCanvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const points = [];
+
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const i = (y * width + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const brightness = (r + g + b) / 3;
+      const isGreenDigit = g > 120 && g > r * 0.85 && g > b * 0.85;
+      const isBright = brightness > 155;
+      if (mode === 'sugar' ? (isGreenDigit || (isBright && g > 110)) : isBright) {
+        points.push([x, y]);
+      }
+    }
+  }
+
+  let bounds;
+  if (points.length > 50) {
+    const xs = points.map(p => p[0]);
+    const ys = points.map(p => p[1]);
+    const minX = Math.max(0, Math.min(...xs) - width * 0.15);
+    const maxX = Math.min(width, Math.max(...xs) + width * 0.15);
+    const minY = Math.max(0, Math.min(...ys) - height * 0.12);
+    const maxY = Math.min(height, Math.max(...ys) + height * 0.12);
+    bounds = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  } else {
+    bounds = {
+      x: width * 0.15,
+      y: height * 0.25,
+      w: width * 0.7,
+      h: height * 0.35
+    };
+  }
+
+  const roiCanvas = document.createElement('canvas');
+  const roiCtx = roiCanvas.getContext('2d', { willReadFrequently: true });
+  roiCanvas.width = Math.max(1, Math.round(bounds.w));
+  roiCanvas.height = Math.max(1, Math.round(bounds.h));
+  roiCtx.drawImage(srcCanvas, bounds.x, bounds.y, bounds.w, bounds.h, 0, 0, roiCanvas.width, roiCanvas.height);
+
+  const imageData = roiCtx.getImageData(0, 0, roiCanvas.width, roiCanvas.height);
+  const binary = binarizeDisplay(imageData, mode);
+  const processed = new ImageData(binaryToRgba(binary, roiCanvas.width, roiCanvas.height), roiCanvas.width, roiCanvas.height);
+  roiCtx.putImageData(processed, 0, 0);
+
+  return {
+    canvas: roiCanvas,
+    binary,
+    width: roiCanvas.width,
+    height: roiCanvas.height,
+    score: points.length / ((width * height) / 16)
+  };
+}
+
+function binarizeDisplay(imageData, mode) {
+  const { data, width, height } = imageData;
+  const gray = new Uint8ClampedArray(width * height);
+  for (let i = 0; i < gray.length; i++) {
+    const idx = i * 4;
+    const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+    gray[i] = mode === 'sugar'
+      ? Math.max(g, (r + g + b) / 3)
+      : (r + g + b) / 3;
+  }
+
+  const threshold = otsuThreshold(gray);
+  const binary = new Uint8ClampedArray(width * height);
+  for (let i = 0; i < gray.length; i++) {
+    binary[i] = gray[i] > threshold ? 1 : 0;
+  }
+  return despeckle(binary, width, height);
+}
+
+function findDigitGroups(binary, width, height) {
+  const colSums = new Array(width).fill(0);
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      colSums[x] += binary[y * width + x];
+    }
+  }
+
+  const minCol = Math.max(2, Math.round(height * 0.12));
+  const rawGroups = [];
+  let start = null;
+  for (let x = 0; x < width; x++) {
+    if (colSums[x] >= minCol && start === null) start = x;
+    if ((colSums[x] < minCol || x === width - 1) && start !== null) {
+      const end = colSums[x] < minCol ? x - 1 : x;
+      if (end - start >= Math.max(6, width * 0.04)) rawGroups.push({ start, end });
+      start = null;
+    }
+  }
+
+  const merged = [];
+  rawGroups.forEach(group => {
+    const prev = merged[merged.length - 1];
+    if (prev && group.start - prev.end < width * 0.03) {
+      prev.end = group.end;
+    } else {
+      merged.push({ ...group });
+    }
+  });
+
+  return merged.map(group => {
+    const rows = [];
+    for (let y = 0; y < height; y++) {
+      let rowActive = 0;
+      for (let x = group.start; x <= group.end; x++) rowActive += binary[y * width + x];
+      rows.push(rowActive);
+    }
+    let top = rows.findIndex(v => v > 0);
+    if (top < 0) top = 0;
+    let bottom = rows.length - 1 - [...rows].reverse().findIndex(v => v > 0);
+    if (bottom < top) bottom = height - 1;
+
+    const digitWidth = group.end - group.start + 1;
+    const digitHeight = bottom - top + 1;
+    const digitBinary = new Uint8ClampedArray(digitWidth * digitHeight);
+    for (let y = 0; y < digitHeight; y++) {
+      for (let x = 0; x < digitWidth; x++) {
+        digitBinary[y * digitWidth + x] = binary[(top + y) * width + (group.start + x)];
+      }
+    }
+    return { binary: digitBinary, width: digitWidth, height: digitHeight };
+  });
+}
+
+function decodeSevenSegment(group, referenceHeight) {
+  const w = group.width;
+  const h = group.height;
+  if (!w || !h) return '?';
+  const x1 = Math.floor(w * 0.25), x2 = Math.floor(w * 0.75);
+  const y1 = Math.floor(h * 0.18), y2 = Math.floor(h * 0.5), y3 = Math.floor(h * 0.82);
+  const left = Math.floor(w * 0.18), right = Math.floor(w * 0.82);
+
+  const segments = {
+    a: sampleRect(group.binary, w, h, x1, Math.max(0, y1 - 3), x2 - x1, 6),
+    g: sampleRect(group.binary, w, h, x1, Math.max(0, y2 - 3), x2 - x1, 6),
+    d: sampleRect(group.binary, w, h, x1, Math.max(0, y3 - 3), x2 - x1, 6),
+    f: sampleRect(group.binary, w, h, Math.max(0, left - 3), y1, 6, y2 - y1),
+    e: sampleRect(group.binary, w, h, Math.max(0, left - 3), y2, 6, y3 - y2),
+    b: sampleRect(group.binary, w, h, Math.max(0, right - 3), y1, 6, y2 - y1),
+    c: sampleRect(group.binary, w, h, Math.max(0, right - 3), y2, 6, y3 - y2)
+  };
+
+  const on = Object.fromEntries(Object.entries(segments).map(([k, v]) => [k, v > 0.25]));
+  const pattern = ['a','b','c','d','e','f','g'].map(k => on[k] ? '1' : '0').join('');
+  const map = {
+    '1111110': '0', '0110000': '1', '1101101': '2', '1111001': '3', '0110011': '4',
+    '1011011': '5', '1011111': '6', '1110000': '7', '1111111': '8', '1111011': '9'
+  };
+  if (map[pattern]) return map[pattern];
+
+  if (on.b && on.c && !on.a && !on.d && !on.e && !on.f) return '1';
+  if (on.a && on.b && on.g && on.e && on.d) return '2';
+  if (on.a && on.b && on.g && on.c && on.d) return '3';
+  if (on.f && on.g && on.b && on.c) return '4';
+  if (on.a && on.f && on.g && on.c && on.d) return '5';
+  if (on.a && on.f && on.g && on.e && on.c && on.d) return '6';
+  if (on.a && on.b && on.c) return '7';
+  if (on.a && on.b && on.c && on.d && on.e && on.f && on.g) return '8';
+  if (on.a && on.b && on.c && on.d && on.f && on.g) return '9';
+  if (on.a && on.b && on.c && on.d && on.e && on.f) return '0';
+  return '?';
+}
+
+function sampleRect(binary, w, h, x, y, rectW, rectH) {
+  let active = 0;
+  let total = 0;
+  for (let iy = y; iy < Math.min(h, y + rectH); iy++) {
+    for (let ix = x; ix < Math.min(w, x + rectW); ix++) {
+      total += 1;
+      active += binary[iy * w + ix];
+    }
+  }
+  return total ? active / total : 0;
+}
+
+function otsuThreshold(gray) {
+  const hist = new Array(256).fill(0);
+  gray.forEach(v => hist[Math.round(v)]++);
+  const total = gray.length;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let threshold = 128;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const variance = wB * wF * (mB - mF) ** 2;
+    if (variance > maxVar) {
+      maxVar = variance;
+      threshold = i;
+    }
+  }
+  return threshold;
+}
+
+function despeckle(binary, width, height) {
+  const cleaned = new Uint8ClampedArray(binary);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x;
+      let neighbors = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          neighbors += binary[(y + dy) * width + (x + dx)];
+        }
+      }
+      if (binary[idx] && neighbors <= 1) cleaned[idx] = 0;
+    }
+  }
+  return cleaned;
+}
+
+function binaryToRgba(binary, width, height) {
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < binary.length; i++) {
+    const value = binary[i] ? 255 : 0;
+    rgba[i * 4] = value;
+    rgba[i * 4 + 1] = value;
+    rgba[i * 4 + 2] = value;
+    rgba[i * 4 + 3] = 255;
+  }
+  return rgba;
+}
+
+function drawImageToCanvas(canvas, img) {
+  const ctx = canvas.getContext('2d');
+  canvas.width = img.naturalWidth || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+}
+
+function drawCanvasImage(targetCanvas, sourceCanvas) {
+  const ctx = targetCanvas.getContext('2d');
+  targetCanvas.width = sourceCanvas.width;
+  targetCanvas.height = sourceCanvas.height;
+  ctx.drawImage(sourceCanvas, 0, 0);
+}
+
+function resetCanvas() {
+  const ctx = processedCanvas.getContext('2d');
+  processedCanvas.width = 600;
+  processedCanvas.height = 450;
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, processedCanvas.width, processedCanvas.height);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function loadJson(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString([], {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+}

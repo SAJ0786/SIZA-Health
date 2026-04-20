@@ -7,4 +7,9 @@ window.HEALTH_TRACKER_FIREBASE = {
     appId: "1:127120551209:web:1b5a44a9486c59522a5b38",
     measurementId: "G-XQ1860FJCB"
 };
-// Paste your Firebase web config here to enable production auth + cloud sync.
+// Replace null with your Firebase web config.
+// Important:
+// If testing on https://YOUR_APP.firebaseapp.com
+// set authDomain to "YOUR_APP.firebaseapp.com"
+// If testing on https://YOUR_APP.web.app
+// set authDomain to "YOUR_APP.web.app"

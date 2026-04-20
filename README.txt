@@ -1,21 +1,23 @@
-Health Tracker - Final Production PWA Package
+SIZA Health Tracker - Final Package
 
-Included:
-- updated branding: logo only + Health Tracker
-- local device auth/register mode
-- Firebase-ready cloud auth + storage
-- OCR from uploaded/captured images using Tesseract.js
-- profile, medications, reminders, charts, and history
-- installable PWA with offline shell
+Included
+- Updated SIZA branding with icon above text and teal SIZA text
+- Dashboard, Profile, and Records tabs
+- Local storage persistence for profile and saved records
+- Guided image upload flow for sugar and BP scan modes
+- Heuristic display detection and seven-segment parsing for meter screens
 
-Deploy:
-1. Unzip
-2. Upload all files to GitHub repo root
-3. Settings > Pages
-4. Deploy from branch
-5. main / root
+Important note
+- This package is a static browser app and saves profile/records in localStorage on the device/browser.
+- The glucose/BP detector is a front-end heuristic parser designed for clear meter photos. It may still need tuning against your exact meter models and real-world sample images.
+- For production deployment with cross-device sync, replace localStorage with Firebase Auth + Firestore.
 
-To enable Firebase:
-- open firebase-config.js
-- paste your Firebase web config
-- redeploy the same files
+How to run
+1. Unzip the package.
+2. Open index.html in a browser, or host the folder on Firebase Hosting / any static host.
+3. Use a clear, front-on photo of the meter display.
+
+Recommended next production step
+- Connect this UI to Firebase Auth + Firestore
+- Add sample real meter photos for tuning the parser
+- Add a server-side OCR or TensorFlow Lite model for higher reliability
